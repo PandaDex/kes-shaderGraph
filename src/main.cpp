@@ -3,6 +3,7 @@
 #include <QApplication>
 #include <QIcon>
 #include <QPalette>
+#include <QSurfaceFormat>
 #include <QStyleFactory>
 
 static void applyDarkTheme(QApplication& app)
@@ -34,6 +35,15 @@ static void applyDarkTheme(QApplication& app)
 
 int main(int argc, char** argv)
 {
+    // The preview runs Slang's GLSL 4.50 output. Set before the app starts so
+    // every GL widget shares one format and docks can float without losing it.
+    QSurfaceFormat format;
+    format.setVersion(4, 5);
+    format.setProfile(QSurfaceFormat::CoreProfile);
+    format.setDepthBufferSize(24);
+    QSurfaceFormat::setDefaultFormat(format);
+    QApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
+
     QApplication app(argc, argv);
     QApplication::setApplicationName("kesGraph");
     QApplication::setOrganizationName("kesGraph");

@@ -1,10 +1,14 @@
 #include "ExampleGraphs.h"
 #include "GraphModel.h"
+#include "KesProject.h"
+#include "MaterialExport.h"
 #include "SlangCodeGen.h"
 
 #include <QCoreApplication>
+#include <QDir>
 #include <QFile>
 #include <QJsonDocument>
+#include <QTemporaryDir>
 #include <iostream>
 
 using namespace sne;
@@ -208,12 +212,154 @@ static void testPropertiesTexturesCustom()
     CHECK(!SlangCodeGen::generate(m).ok);
 }
 
+static void testEngineTarget()
+{
+    GraphModel m;
+    const int out = m.addNode("fragmentOutput", {});
+    const int tex = m.addNode("sampleTexture2D", {});
+    m.setParam(tex, "Slot", "Emissive");
+    const int time = m.addNode("time", {});
+    const int fresnel = m.addNode("fresnel", {});
+    const int prop = m.addNode("propFloat", {});
+    m.setParam(prop, "Name", "glow");
+    m.setParam(prop, "Default", 2.5);
+    const int mat = m.addNode("material", {});
+    connectByName(m, tex, "RGB", out, "Emission");
+    connectByName(m, time, "Sin", out, "Metallic");
+    connectByName(m, fresnel, "Out", out, "Roughness");
+    connectByName(m, prop, "Out", out, "Occlusion");
+    connectByName(m, mat, "Base Color", out, "Normal");
+
+    CodeGenResult r = SlangCodeGen::generate(m, "t", ShaderTarget::KesEngine);
+    CHECK(r.ok);
+    CHECK(r.code.contains("#include \"kes_common.slang\""));
+    CHECK(r.code.contains("VSOutput vsMain(MeshVertexInput vertex)"));
+    CHECK(r.code.contains("float4 psMain(VSOutput input, bool isFrontFace : SV_IsFrontFace) : SV_Target"));
+    CHECK(r.code.contains("uEmissiveTexture.Sample(input.uv).rgb"));
+    CHECK(r.code.contains("sin(KesTime())"));
+    CHECK(r.code.contains("uCameraPosition.xyz - input.worldPos"));
+    CHECK(r.code.contains("static const float kProp_glow = 2.5;"));
+    CHECK(r.code.contains("surface.emissive = n"));
+    CHECK(r.code.contains("surface.normal = KesTangentNormal(surfaceInput, n"));
+    CHECK(r.code.contains("return KesShadeMaterial(surfaceInput, surface);"));
+    CHECK(!r.code.contains("surface.baseColor ="));
+    CHECK(!r.code.contains("gScene"));
+    CHECK(!r.code.contains("gMaterial"));
+    CHECK(!r.code.contains("gSampler"));
+    CHECK(r.warnings.join('\n').contains("Emissive slot has no texture"));
+
+    CHECK(!SlangCodeGen::generate(m).ok);   // the Material node has no standalone form
+
+    GraphModel plain;
+    const int plainOut = plain.addNode("fragmentOutput", {});
+    CHECK(!SlangCodeGen::hasSurfaceOverrides(plain));
+    plain.setInputDefault(plainOut, "Color", {1.0, 0.0, 0.0});
+    CHECK(SlangCodeGen::hasSurfaceOverrides(plain));
+    CHECK(SlangCodeGen::generate(plain, "t", ShaderTarget::KesEngine).code.contains("surface.baseColor = float3(1.0, 0.0, 0.0);"));
+}
+
+static void testMaterialInGraphFile()
+{
+    GraphModel m;
+    m.edit("add", [&] { m.addNode("fragmentOutput", {}); });
+
+    MaterialSettings s = m.material();
+    s.roughness = 0.25;
+    s.transparent = true;
+    s.textures[SlotNormal] = "textures/n.png";
+    m.edit("material", [&] { m.setMaterial(s); });
+
+    GraphModel loaded;
+    QStringList warnings;
+    CHECK(loaded.loadJson(m.toJson(), &warnings));
+    CHECK(loaded.nodeCount() == 1);
+    CHECK(loaded.material().roughness == 0.25);
+    CHECK(loaded.material().transparent);
+    CHECK(loaded.material().textures[SlotNormal] == "textures/n.png");
+
+    m.undoStack()->undo();
+    CHECK(m.material().roughness == 0.8);
+    CHECK(m.nodeCount() == 1);
+    m.undoStack()->redo();
+    CHECK(m.material().roughness == 0.25);
+
+    const QList<int> ids = m.nodeIds();
+    CHECK(!m.toJson(&ids).contains("material"));
+}
+
+static QString readAll(const QString& path)
+{
+    QFile f(path);
+    return f.open(QIODevice::ReadOnly) ? QString::fromUtf8(f.readAll()) : QString();
+}
+
+static void testMaterialExport()
+{
+    QTemporaryDir dir;
+    CHECK(dir.isValid());
+    const QString root = QDir(dir.path()).absoluteFilePath("content");
+    const QString matPath = root + "/materials/Glow Rock.mat";
+    QDir().mkpath(root + "/materials");
+    {
+        QFile project(dir.filePath("game.kproject"));
+        CHECK(project.open(QIODevice::WriteOnly));
+        project.write("Project\n{\n    Name=\"X\"\n    AssetRoot=\"content\"\n}\n");
+    }
+    CHECK(QDir::cleanPath(findContentRoot(matPath)) == QDir::cleanPath(root));
+    CHECK(contentRelativePath(root, root + "/textures/a.png") == "textures/a.png");
+    CHECK(contentRelativePath(root, dir.filePath("a.png")).isEmpty());
+
+    GraphModel m;
+    const int out = m.addNode("fragmentOutput", {});
+
+    MaterialFiles files;
+    QString error;
+    CHECK(buildMaterialFiles(m, matPath, root, files, &error));
+    CHECK(!files.hasShader());
+    CHECK(!files.matText.contains("Shader ="));
+
+    CHECK(!buildMaterialFiles(m, dir.filePath("outside.mat"), root, files, &error));
+
+    const int noise = m.addNode("valueNoise", {});
+    connectByName(m, noise, "Out", out, "Roughness");
+    MaterialSettings s = m.material();
+    s.metallic = 1.0;
+    s.emissiveIntensity = 4.0;
+    s.doubleSided = true;
+    s.textures[SlotBaseColor] = "textures/rock.png";
+    s.textures[SlotEmissive] = "textures/glow.png";
+    m.setMaterial(s);
+
+    CHECK(buildMaterialFiles(m, matPath, root, files, &error));
+    CHECK(files.hasShader());
+    CHECK(files.matText.contains("Shader = \"shaders/Glow_Rock.shader\""));
+    CHECK(files.matText.contains("BaseTexture = \"textures/rock.png\""));
+    CHECK(files.matText.contains("EmissiveTexture = \"textures/glow.png\""));
+    CHECK(files.matText.contains("Metallic = 1\n"));
+    CHECK(files.matText.contains("EmissiveIntensity = 4\n"));
+    CHECK(files.matText.contains("DoubleSided = true\n"));
+    CHECK(files.shaderText.contains("Source = \"shaders/Glow_Rock.slang\""));
+    CHECK(handWrittenFiles(files).isEmpty());
+
+    CHECK(writeMaterialFiles(files, &error));
+    CHECK(readAll(matPath) == files.matText);
+    CHECK(readAll(root + "/shaders/Glow_Rock.slang") == files.slangText);
+    CHECK(handWrittenFiles(files).isEmpty());
+
+    {
+        QFile f(files.slangPath);
+        CHECK(f.open(QIODevice::WriteOnly | QIODevice::Truncate));
+        f.write("// my own shader\n");
+    }
+    CHECK(handWrittenFiles(files).contains(files.slangPath));
+}
+
 static void buildKitchenSink(GraphModel& m, int variant)
 {
     const int out = m.addNode("fragmentOutput", {});
     QVector<int> nodes;
     for (const NodeDef& d : NodeLibrary::instance().all()) {
-        if (d.role == NodeRole::FragmentOutput) continue;
+        if (d.role == NodeRole::FragmentOutput || d.engineOnly) continue;
         nodes << m.addNode(d.type, {});
     }
 
@@ -280,6 +426,9 @@ int main(int argc, char** argv)
     testPasteRemapsIds();
     testCodegen(argc > 1 ? QString::fromLocal8Bit(argv[1]) : QString());
     testPropertiesTexturesCustom();
+    testEngineTarget();
+    testMaterialInGraphFile();
+    testMaterialExport();
     testKitchenSink(argc > 2 ? QString::fromLocal8Bit(argv[2]) : QString());
     testNoOutput();
 

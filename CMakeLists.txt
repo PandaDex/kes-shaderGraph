@@ -11,7 +11,7 @@ if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
 endif()
 
-find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets OpenGLWidgets)
+find_package(Qt6 6.4 REQUIRED COMPONENTS Core Gui Widgets OpenGL OpenGLWidgets)
 qt_standard_project_setup()
 
 add_library(sne_core STATIC
@@ -24,6 +24,12 @@ add_library(sne_core STATIC
     src/SlangCodeGen.cpp
     src/ExampleGraphs.h
     src/ExampleGraphs.cpp
+    src/MaterialSettings.h
+    src/MaterialSettings.cpp
+    src/MaterialExport.h
+    src/MaterialExport.cpp
+    src/KesProject.h
+    src/KesProject.cpp
 )
 target_include_directories(sne_core PUBLIC src)
 target_link_libraries(sne_core PUBLIC Qt6::Core Qt6::Gui)
@@ -44,14 +50,29 @@ qt_add_executable(kesShaderGraph
     src/InspectorWidget.cpp
     src/SlangHighlighter.h
     src/SlangHighlighter.cpp
+    src/MaterialPanel.h
+    src/MaterialPanel.cpp
+    src/PreviewCompiler.h
+    src/PreviewCompiler.cpp
+    src/PreviewRenderer.h
+    src/PreviewRenderer.cpp
+    src/PreviewWidget.h
+    src/PreviewWidget.cpp
 )
-target_link_libraries(kesShaderGraph PRIVATE sne_core Qt6::Widgets Qt6::OpenGLWidgets)
+target_link_libraries(kesShaderGraph PRIVATE sne_core Qt6::Widgets Qt6::OpenGL Qt6::OpenGLWidgets)
 
 # Runtime window icon (title bar, taskbar on Linux), available as :/icons/icon.png
 qt_add_resources(kesShaderGraph "app_icon"
     PREFIX "/icons"
     BASE resource
     FILES resource/icon.png
+)
+
+# Available as :/preview/kes_common.slang
+qt_add_resources(kesShaderGraph "preview_shaders"
+    PREFIX "/"
+    BASE resource
+    FILES resource/preview/kes_common.slang
 )
 
 if(WIN32)

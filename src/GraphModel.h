@@ -1,5 +1,6 @@
 #pragma once
 
+#include "MaterialSettings.h"
 #include "NodeLibrary.h"
 
 #include <QHash>
@@ -47,6 +48,9 @@ public:
     bool hasOutputNode() const;
     int outputNodeId() const;
 
+    const MaterialSettings& material() const { return m_material; }
+    void setMaterial(const MaterialSettings& material);
+
     QVariant param(int nodeId, const QString& name) const;
     QVariantList inputDefault(int nodeId, int inputPort) const;
 
@@ -75,6 +79,7 @@ signals:
     void connectionAdded(int id);
     void connectionRemoved(int id);
     void graphReset();
+    void materialChanged();
     void changed();
 
 private:
@@ -83,6 +88,7 @@ private:
 
     QHash<int, GraphNode> m_nodes;
     QVector<GraphConnection> m_connections;
+    MaterialSettings m_material;
     int m_nextNodeId = 1;
     int m_nextConnId = 1;
     bool m_inEdit = false;

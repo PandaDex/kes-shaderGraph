@@ -168,7 +168,8 @@ NodeItem::NodeItem(GraphModel* model, int nodeId)
 QString NodeItem::defaultText(int i) const
 {
     const PortDef& port = m_def->inputs[i];
-    if (!port.defaultExpr.isEmpty()) return QStringLiteral("mesh");
+    if (!port.defaultExpr.isEmpty())
+        return port.defaultExpr.startsWith(QLatin1String("surface.")) ? QStringLiteral("material") : QStringLiteral("mesh");
     const QVariantList v = m_model->inputDefault(m_id, i);
     if (port.type == PortType::Generic || dimension(port.type) <= 1)
         return v.isEmpty() ? "0" : QString::number(v[0].toDouble(), 'g', 4);

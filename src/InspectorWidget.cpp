@@ -225,7 +225,9 @@ QWidget* InspectorWidget::makeParamEditor(int id, int pi)
 QWidget* InspectorWidget::makeDefaultEditor(int id, int ii)
 {
     const PortDef port = m_model->def(id)->inputs[ii];
-    if (!port.defaultExpr.isEmpty()) return note("uses mesh data when unconnected");
+    if (!port.defaultExpr.isEmpty())
+        return note(port.defaultExpr.startsWith(QLatin1String("surface.")) ? "uses the Material panel when unconnected"
+                                                            : "uses mesh data when unconnected");
 
     const QString name = port.name;
     const QVariantList cur = m_model->inputDefault(id, ii);

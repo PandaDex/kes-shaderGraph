@@ -1,5 +1,7 @@
 #include "NodeLibrary.h"
 
+#include "MaterialSettings.h"
+
 #include <initializer_list>
 
 namespace sne {
@@ -76,6 +78,14 @@ NodeLibrary::NodeLibrary()
         .out("Normal", F3, "normalize(input.normal)");
     add("viewDirection", "View Direction", "Input", "Normalised vector from the surface towards the camera.")
         .out("Direction", F3, "normalize(gScene.cameraPos - input.worldPos)");
+    add("material", "Material", "Input", "Values from the Material panel, after its textures. KES target only.")
+        .out("Base Color", F3, "surface.baseColor")
+        .out("Alpha", F, "surface.alpha")
+        .out("Emissive", F3, "surface.emissive")
+        .out("Metallic", F, "surface.metallic")
+        .out("Roughness", F, "surface.roughness")
+        .out("Occlusion", F, "surface.occlusion")
+        .forEngineOnly();
 
     add("float", "Float", "Constant", "A constant scalar.")
         .pFloat("Value", 1.0)
@@ -97,14 +107,17 @@ NodeLibrary::NodeLibrary()
 
     add("propFloat", "Float Property", "Property", "A float in the material constant buffer, set from the application.")
         .pIdent("Name", "intensity")
+        .pFloat("Default", 1.0)
         .uniform("Name", F)
         .out("Out", F, "gMaterial.${Name}");
     add("propVector3", "Vector 3 Property", "Property", "A float3 in the material constant buffer.")
         .pIdent("Name", "direction")
+        .pFloat("X", 0.0).pFloat("Y", 1.0).pFloat("Z", 0.0)
         .uniform("Name", F3)
         .out("Out", F3, "gMaterial.${Name}");
     add("propColor", "Color Property", "Property", "A float4 colour in the material constant buffer.")
         .pIdent("Name", "tint")
+        .pColor("Default", 1.0, 1.0, 1.0, 1.0)
         .uniform("Name", F4)
         .out("RGBA", F4, "gMaterial.${Name}")
         .out("RGB", F3, "gMaterial.${Name}.rgb")
@@ -190,13 +203,20 @@ NodeLibrary::NodeLibrary()
         .out("Radius", F, "length({UV} - {Center})")
         .out("Angle", F, "atan2(({UV} - {Center}).y, ({UV} - {Center}).x)");
 
-    add("sampleTexture2D", "Sample Texture 2D", "Texture", "Sample a Texture2D with the shared sampler.")
+    add("sampleTexture2D", "Sample Texture 2D", "Texture",
+        "Sample a texture. The KES target reads the Material panel texture in Slot; "
+        "standalone Slang declares a Texture2D named by Texture.")
         .pIdent("Texture", "albedo")
+        .pEnum("Slot", materialSlotLabels(), materialSlotLabels().first())
         .texture("Texture")
         .in("UV", F2, {}, "input.uv")
         .out("RGBA", F4, "tex_${Texture}.Sample(gSampler, {UV})")
         .out("RGB", F3, "tex_${Texture}.Sample(gSampler, {UV}).rgb")
         .out("A", F, "tex_${Texture}.Sample(gSampler, {UV}).a");
+
+    add("unpackNormal", "Unpack Normal", "Texture", "Decode a normal map sample to a tangent-space normal for the output's Normal input.")
+        .in("RGB", F3, V({0.5, 0.5, 1.0})).in("Strength", F, V({1.0}))
+        .out("Normal", F3, "normalize(float3(({RGB}.xy * 2.0 - 1.0) * {Strength}, {RGB}.z * 2.0 - 1.0))");
 
     add("checker", "Checkerboard", "Procedural", "0/1 checker pattern.")
         .in("UV", F2, {}, "input.uv").in("Scale", F, V({8.0}))
@@ -232,8 +252,12 @@ NodeLibrary::NodeLibrary()
         .out("Out", F, "")
         .withRole(NodeRole::CustomExpression);
 
-    add("fragmentOutput", "Fragment Output", "Output", "Final surface colour: float4(Color + Emission, Alpha).")
+    add("fragmentOutput", "Fragment Output", "Output",
+        "KES target: the surface fed to the engine's lighting; inputs left alone keep the Material panel values. "
+        "Standalone Slang: float4(Color + Emission, Alpha), other inputs unused.")
         .in("Color", F3, V({0.8, 0.8, 0.8})).in("Emission", F3, V({0, 0, 0})).in("Alpha", F, V({1.0}))
+        .in("Metallic", F, {}, "surface.metallic").in("Roughness", F, {}, "surface.roughness")
+        .in("Normal", F3, {}, "surface.normal").in("Occlusion", F, {}, "surface.occlusion")
         .withRole(NodeRole::FragmentOutput);
 
     for (int i = 0; i < m_defs.size(); ++i) m_index.insert(m_defs[i].type, i);

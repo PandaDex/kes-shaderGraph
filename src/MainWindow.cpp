@@ -3,20 +3,29 @@
 #include "ExampleGraphs.h"
 #include "GraphModel.h"
 #include "InspectorWidget.h"
+#include "KesProject.h"
+#include "MaterialExport.h"
+#include "MaterialPanel.h"
 #include "NodeGraphScene.h"
 #include "NodeGraphView.h"
 #include "NodeSearchPopup.h"
+#include "PreviewCompiler.h"
+#include "PreviewWidget.h"
 #include "SlangHighlighter.h"
 
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
 #include <QCloseEvent>
+#include <QComboBox>
+#include <QCoreApplication>
+#include <QDir>
 #include <QDockWidget>
 #include <QFile>
 #include <QFileDialog>
 #include <QFileInfo>
 #include <QHBoxLayout>
+#include <QImage>
 #include <QJsonDocument>
 #include <QLabel>
 #include <QLineEdit>
@@ -26,6 +35,7 @@
 #include <QMessageBox>
 #include <QMimeData>
 #include <QPlainTextEdit>
+#include <QScrollArea>
 #include <QScrollBar>
 #include <QSettings>
 #include <QShortcut>
@@ -79,6 +89,9 @@ MainWindow::MainWindow()
     m_view = new NodeGraphView(m_scene, this);
     m_inspector = new InspectorWidget(m_model, this);
     m_popup = new NodeSearchPopup(this);
+    m_materialPanel = new MaterialPanel(m_model, this);
+    m_preview = new PreviewWidget(this);
+    m_compiler = new PreviewCompiler(this);
 
     buildUi();
 
@@ -90,7 +103,17 @@ MainWindow::MainWindow()
         m_genTimer.start();
         updateStatus();
     });
+    connect(m_model, &GraphModel::materialChanged, this, &MainWindow::syncMaterial);
     connect(m_model->undoStack(), &QUndoStack::cleanChanged, this, [this] { updateTitle(); });
+
+    connect(m_compiler, &PreviewCompiler::compiled, this, [this](const QString& vertex, const QString& fragment) {
+        setPreviewErrors(QString());
+        m_preview->setProgram(vertex, fragment);
+    });
+    connect(m_compiler, &PreviewCompiler::failed, this, &MainWindow::setPreviewErrors);
+    connect(m_preview, &PreviewWidget::shaderRejected, this, &MainWindow::setPreviewErrors);
+    connect(m_preview, &PreviewWidget::rendererFailed, this, &MainWindow::setPreviewErrors);
+    connect(m_materialPanel, &MaterialPanel::contentRootFound, this, &MainWindow::setContentRoot);
 
     connect(m_scene, &NodeGraphScene::selectionIdsChanged, m_inspector, &InspectorWidget::setSelection);
     connect(m_scene, &NodeGraphScene::statusMessage, this, [this](const QString& s) { statusBar()->showMessage(s, 4000); });
@@ -120,12 +143,18 @@ MainWindow::MainWindow()
         m_view->setFocus();
     });
 
+    buildEmptyGraph(*m_model);
     m_model->undoStack()->clear();
     m_model->undoStack()->setClean();
 
     QSettings s;
     restoreGeometry(s.value("geometry").toByteArray());
     restoreState(s.value("windowState").toByteArray());
+
+    m_projectPath = s.value("projectPath").toString();
+    if (QFileInfo::exists(m_projectPath)) setContentRoot(contentRootFromProject(m_projectPath));
+    detectSlangc();
+    syncMaterial();
 
     regenerate();
     updateTitle();
@@ -196,11 +225,52 @@ void MainWindow::buildDocks()
     bottomDock->setObjectName("ShaderDock");
     bottomDock->setWidget(m_bottomTabs);
     addDockWidget(Qt::BottomDockWidgetArea, bottomDock);
+    auto* previewDock = new QDockWidget("Preview", this);
+    previewDock->setObjectName("PreviewDock");
+    previewDock->setWidget(buildPreviewPanel());
+    addDockWidget(Qt::RightDockWidgetArea, previewDock);
+    splitDockWidget(previewDock, inspDock, Qt::Vertical);
+
+    auto* materialScroll = new QScrollArea;
+    materialScroll->setWidget(m_materialPanel);
+    materialScroll->setWidgetResizable(true);
+    materialScroll->setFrameShape(QFrame::NoFrame);
+    auto* materialDock = new QDockWidget("Material", this);
+    materialDock->setObjectName("MaterialDock");
+    materialDock->setWidget(materialScroll);
+    addDockWidget(Qt::RightDockWidgetArea, materialDock);
+    tabifyDockWidget(inspDock, materialDock);
+    inspDock->raise();
+
     resizeDocks({bottomDock}, {260}, Qt::Vertical);
-    resizeDocks({libDock, inspDock}, {250, 300}, Qt::Horizontal);
+    resizeDocks({libDock, inspDock}, {250, 320}, Qt::Horizontal);
+    resizeDocks({previewDock}, {320}, Qt::Vertical);
 
     menuBar();
-    m_dockToggles = {libDock->toggleViewAction(), inspDock->toggleViewAction(), bottomDock->toggleViewAction()};
+    m_dockToggles = {libDock->toggleViewAction(), inspDock->toggleViewAction(), materialDock->toggleViewAction(),
+                     previewDock->toggleViewAction(), bottomDock->toggleViewAction()};
+}
+
+QWidget* MainWindow::buildPreviewPanel()
+{
+    auto* panel = new QWidget;
+    auto* layout = new QVBoxLayout(panel);
+    layout->setContentsMargins(0, 0, 0, 0);
+    layout->setSpacing(4);
+    layout->addWidget(m_preview, 1);
+
+    auto* shape = new QComboBox;
+    shape->addItems({"Sphere", "Cube", "Plane", "Torus"});
+    connect(shape, &QComboBox::currentIndexChanged, this,
+            [this](int index) { m_preview->setShape(PreviewShape(index)); });
+    m_previewStatus = new QLabel;
+
+    auto* row = new QHBoxLayout;
+    row->setContentsMargins(6, 0, 6, 4);
+    row->addWidget(shape);
+    row->addWidget(m_previewStatus, 1);
+    layout->addLayout(row);
+    return panel;
 }
 
 void MainWindow::populateLibrary()
@@ -290,6 +360,9 @@ void MainWindow::buildActions()
     m_actSnap->setCheckable(true);
 
     m_actAbout = make("&About", {}, [this] { about(); });
+    m_actExportMaterial = make("Export &Material…", QKeySequence("Ctrl+Shift+E"), [this] { exportMaterial(); });
+    m_actOpenProject = make("Open &Project…", QKeySequence("Ctrl+Shift+O"), [this] { openProject(); });
+    m_actLocateSlangc = make("&Locate slangc…", {}, [this] { locateSlangc(); });
 
     auto* tb = addToolBar("Main");
     tb->setObjectName("MainToolBar");
@@ -305,6 +378,17 @@ void MainWindow::buildActions()
     tb->addAction(m_actFrameAll);
     tb->addSeparator();
     tb->addAction(m_actExport);
+    tb->addAction(m_actExportMaterial);
+    tb->addSeparator();
+
+    m_targetCombo = new QComboBox;
+    m_targetCombo->addItems({"KES Engine", "Standalone Slang"});
+    m_targetCombo->setToolTip("Target for the Slang Source tab and Export Slang. The preview always uses the KES target.");
+    connect(m_targetCombo, &QComboBox::currentIndexChanged, this, [this](int index) {
+        m_target = index == 0 ? ShaderTarget::KesEngine : ShaderTarget::Standalone;
+        regenerate();
+    });
+    tb->addWidget(m_targetCombo);
 }
 
 void MainWindow::buildMenus()
@@ -313,12 +397,16 @@ void MainWindow::buildMenus()
     file->addAction(m_actNew);
     file->addAction(m_actOpen);
     file->addAction(m_actExample);
+    file->addAction(m_actOpenProject);
     file->addSeparator();
     file->addAction(m_actSave);
     file->addAction(m_actSaveAs);
     file->addSeparator();
+    file->addAction(m_actExportMaterial);
     file->addAction(m_actExport);
     file->addAction(m_actCopyCode);
+    file->addSeparator();
+    file->addAction(m_actLocateSlangc);
     file->addSeparator();
     file->addAction(m_actQuit);
 
@@ -436,6 +524,7 @@ bool MainWindow::openFile(const QString& path)
     m_model->undoStack()->clear();
     m_model->undoStack()->setClean();
     m_currentFile = path;
+    if (m_contentRoot.isEmpty()) setContentRoot(findContentRoot(path));
     updateTitle();
     m_view->frameAll();
     if (!warnings.isEmpty()) QMessageBox::information(this, "Loaded with warnings", warnings.join('\n'));
@@ -491,6 +580,121 @@ void MainWindow::exportSlang()
     statusBar()->showMessage("Exported " + path, 3000);
 }
 
+void MainWindow::exportMaterial()
+{
+    regenerate();
+
+    const QString folder = m_contentRoot.isEmpty() ? QString() : QDir(m_contentRoot).absoluteFilePath("materials");
+    QString path = QFileDialog::getSaveFileName(this, "Export material", QDir(folder).absoluteFilePath(graphName() + ".mat"),
+                                                "KES materials (*.mat)");
+    if (path.isEmpty()) return;
+    if (QFileInfo(path).suffix().isEmpty()) path += ".mat";
+
+    if (m_contentRoot.isEmpty()) setContentRoot(findContentRoot(path));
+
+    MaterialFiles files;
+    QString error;
+    if (!buildMaterialFiles(*m_model, path, m_contentRoot, files, &error)) {
+        QMessageBox::warning(this, "Cannot export", error);
+        return;
+    }
+
+    if (files.hasShader() && !m_previewErrors.isEmpty()) {
+        const auto r = QMessageBox::question(this, "Shader has errors",
+                                             "The preview could not compile this shader, so the engine build will fail on it too.\n"
+                                             "Export anyway?");
+        if (r != QMessageBox::Yes) return;
+    }
+    const QStringList handWritten = handWrittenFiles(files);
+    if (!handWritten.isEmpty()) {
+        const auto r = QMessageBox::question(this, "Overwrite files",
+                                             QString("These files weren't written by this tool:\n\n%1\n\nOverwrite them?")
+                                                 .arg(handWritten.join('\n')));
+        if (r != QMessageBox::Yes) return;
+    }
+
+    if (!writeMaterialFiles(files, &error)) {
+        QMessageBox::warning(this, "Export failed", error);
+        return;
+    }
+    statusBar()->showMessage(files.hasShader() ? "Exported " + path + ". Rebuild the game to compile its shader."
+                                               : "Exported " + path,
+                             6000);
+}
+
+void MainWindow::openProject()
+{
+    const QString path = QFileDialog::getOpenFileName(this, "Open project", QFileInfo(m_projectPath).absolutePath(),
+                                                      "KES projects (*.kproject)");
+    if (path.isEmpty()) return;
+
+    const QString root = contentRootFromProject(path);
+    if (root.isEmpty()) {
+        QMessageBox::warning(this, "Open failed", QString("%1 has no AssetRoot.").arg(path));
+        return;
+    }
+    m_projectPath = path;
+    QSettings().setValue("projectPath", path);
+    setContentRoot(root);
+    detectSlangc();
+    m_previewSource.clear();
+    regenerate();
+    statusBar()->showMessage("Content folder: " + root, 4000);
+}
+
+void MainWindow::locateSlangc()
+{
+    const QString path = QFileDialog::getOpenFileName(this, "Locate slangc", QFileInfo(m_compiler->slangc()).absolutePath());
+    if (path.isEmpty()) return;
+    QSettings().setValue("slangcPath", path);
+    detectSlangc();
+    m_previewSource.clear();
+    regenerate();
+}
+
+void MainWindow::detectSlangc()
+{
+    QString path = QSettings().value("slangcPath").toString();
+    if (!QFileInfo::exists(path))
+        path = findSlangc({QFileInfo(m_projectPath).absolutePath(), QCoreApplication::applicationDirPath(), QDir::currentPath()});
+    m_compiler->setSlangc(path);
+}
+
+void MainWindow::setContentRoot(const QString& root)
+{
+    m_contentRoot = root;
+    m_materialPanel->setContentRoot(root);
+    m_loadedTextures.fill(QString());
+    syncMaterial();
+}
+
+void MainWindow::syncMaterial()
+{
+    const MaterialSettings& material = m_model->material();
+    m_preview->setMaterial(material);
+
+    for (int i = 0; i < MaterialSlotCount; ++i) {
+        const QString& relative = material.textures[i];
+        if (relative == m_loadedTextures[i]) continue;
+        m_loadedTextures[i] = relative;
+
+        QImage image;
+        if (!relative.isEmpty()) image.load(QDir(m_contentRoot).absoluteFilePath(relative));
+        m_textureProblems[i] = !relative.isEmpty() && image.isNull()
+                                   ? QString("Preview can't load texture %1.").arg(relative)
+                                   : QString();
+        m_preview->setTexture(i, image);
+    }
+    refreshProblems();
+}
+
+void MainWindow::setPreviewErrors(const QString& log)
+{
+    m_previewErrors = log.split('\n', Qt::SkipEmptyParts);
+    m_previewStatus->setText(m_previewErrors.isEmpty() ? QString() : QStringLiteral("⚠ see Problems"));
+    refreshProblems();
+}
+
 void MainWindow::copySlang()
 {
     regenerate();
@@ -501,7 +705,7 @@ void MainWindow::copySlang()
 void MainWindow::regenerate()
 {
     m_genTimer.stop();
-    m_gen = SlangCodeGen::generate(*m_model, graphName());
+    m_gen = SlangCodeGen::generate(*m_model, graphName(), m_target);
 
     const int scroll = m_code->verticalScrollBar()->value();
     m_code->setPlainText(m_gen.ok ? m_gen.code : QString("// Cannot generate shader:\n// %1\n").arg(m_gen.errors.join("\n// ")));
@@ -509,6 +713,15 @@ void MainWindow::regenerate()
 
     m_genLabel->setText(m_gen.ok ? QString() : QStringLiteral("⚠ shader has errors"));
     refreshProblems();
+
+    const CodeGenResult engine = m_target == ShaderTarget::KesEngine
+                                     ? m_gen
+                                     : SlangCodeGen::generate(*m_model, graphName(), ShaderTarget::KesEngine);
+    if (engine.ok && engine.code != m_previewSource) {
+        m_previewSource = engine.code;
+        m_preview->setAnimated(engine.code.contains("KesTime()"));
+        m_compiler->compile(engine.code);
+    }
 }
 
 void MainWindow::refreshProblems()
@@ -521,6 +734,9 @@ void MainWindow::refreshProblems()
     };
     for (const QString& e : m_gen.errors) add(true, e);
     for (const QString& w : m_gen.warnings) add(false, w);
+    for (const QString& e : m_previewErrors) add(true, e);
+    for (const QString& w : m_textureProblems)
+        if (!w.isEmpty()) add(false, w);
 
     const int n = m_problems->count();
     m_bottomTabs->setTabText(1, n ? QString("Problems (%1)").arg(n) : "Problems");

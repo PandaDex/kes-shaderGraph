@@ -19,6 +19,7 @@ void buildEmptyGraph(GraphModel& m)
     m.clear();
     m.addNode("fragmentOutput", QPointF(0, 0));
     emit m.graphReset();
+    emit m.materialChanged();
     emit m.changed();
 }
 

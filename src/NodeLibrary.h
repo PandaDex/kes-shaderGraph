@@ -50,6 +50,7 @@ struct NodeDef {
     PortType uniformType = PortType::Float;
     QString textureNameParam;
     int genericMinDim = 1;
+    bool engineOnly = false;
 
     int inputIndex(const QString& n) const
     {
@@ -127,6 +128,7 @@ struct NodeDef {
     NodeDef& uniform(const QString& nameParam, PortType t) { uniformNameParam = nameParam; uniformType = t; return *this; }
     NodeDef& texture(const QString& nameParam) { textureNameParam = nameParam; return *this; }
     NodeDef& withRole(NodeRole r) { role = r; return *this; }
+    NodeDef& forEngineOnly() { engineOnly = true; return *this; }
 };
 
 struct HelperDef {

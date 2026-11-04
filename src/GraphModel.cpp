@@ -233,6 +233,13 @@ void GraphModel::setInputDefault(int id, const QString& portName, const QVariant
     emit changed();
 }
 
+void GraphModel::setMaterial(const MaterialSettings& material)
+{
+    m_material = material;
+    emit materialChanged();
+    emit changed();
+}
+
 void GraphModel::edit(const QString& text, const std::function<void()>& fn, const QString& mergeKey)
 {
     if (m_inEdit) { fn(); return; }
@@ -280,10 +287,11 @@ QJsonObject GraphModel::toJson(const QList<int>* subset) const
     }
 
     QJsonObject root;
-    root["format"] = "kes";
+    root["format"] = "kesGraph";
     root["version"] = 1;
     root["nodes"] = nodes;
     root["connections"] = conns;
+    if (!subset) root["material"] = m_material.toJson();
     return root;
 }
 
@@ -294,6 +302,8 @@ bool GraphModel::parse(const QJsonObject& obj, bool remap, const QPointF& offset
         if (warnings) *warnings << "Not a kesGraph graph.";
         return false;
     }
+    if (!remap) m_material = MaterialSettings::fromJson(obj.value("material").toObject());
+
     QHash<int, int> idMap;
     const QJsonArray nodes = obj.value("nodes").toArray();
     for (const QJsonValue& v : nodes) {
@@ -342,6 +352,7 @@ void GraphModel::clear()
 {
     m_nodes.clear();
     m_connections.clear();
+    m_material = {};
     m_nextNodeId = 1;
     m_nextConnId = 1;
 }
@@ -353,6 +364,7 @@ bool GraphModel::loadJson(const QJsonObject& obj, QStringList* warnings)
     const bool ok = parse(obj, false, QPointF(), nullptr, warnings);
     blockSignals(false);
     emit graphReset();
+    emit materialChanged();
     emit changed();
     return ok;
 }

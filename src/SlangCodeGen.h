@@ -8,6 +8,8 @@
 
 namespace sne {
 
+enum class ShaderTarget { Standalone, KesEngine };
+
 struct TypeInfo {
     QHash<int, PortType> generic;
     QHash<quint64, PortType> outputs;
@@ -29,7 +31,12 @@ struct CodeGenResult {
 
 class SlangCodeGen {
 public:
-    static CodeGenResult generate(const GraphModel& graph, const QString& graphName = QStringLiteral("NodeShader"));
+    static CodeGenResult generate(const GraphModel& graph, const QString& graphName = QStringLiteral("NodeShader"),
+                                  ShaderTarget target = ShaderTarget::Standalone);
+
+    // Whether the output node changes anything over the plain .mat values.
+    static bool hasSurfaceOverrides(const GraphModel& graph);
+    static QString generatedHeader();
 
     static QString convertExpr(const QString& expr, PortType from, PortType to);
     static QString formatFloat(double v);
