@@ -1,0 +1,3 @@
+// Embeds the application icon in the executable so Explorer, the taskbar and
+// shortcuts can show it. Windows uses the first icon resource for the file.
+IDI_ICON1 ICON "icon.ico"

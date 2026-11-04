@@ -1,0 +1,240 @@
+{
+    "connections": [
+        {
+            "from": 2,
+            "fromPort": "Time",
+            "id": 1,
+            "to": 3,
+            "toPort": "A"
+        },
+        {
+            "from": 3,
+            "fromPort": "Out",
+            "id": 2,
+            "to": 4,
+            "toPort": "R"
+        },
+        {
+            "from": 1,
+            "fromPort": "UV",
+            "id": 3,
+            "to": 5,
+            "toPort": "UV"
+        },
+        {
+            "from": 4,
+            "fromPort": "RG",
+            "id": 4,
+            "to": 5,
+            "toPort": "Offset"
+        },
+        {
+            "from": 5,
+            "fromPort": "Out",
+            "id": 5,
+            "to": 6,
+            "toPort": "UV"
+        },
+        {
+            "from": 7,
+            "fromPort": "RGB",
+            "id": 6,
+            "to": 9,
+            "toPort": "A"
+        },
+        {
+            "from": 8,
+            "fromPort": "RGB",
+            "id": 7,
+            "to": 9,
+            "toPort": "B"
+        },
+        {
+            "from": 6,
+            "fromPort": "Out",
+            "id": 8,
+            "to": 9,
+            "toPort": "T"
+        },
+        {
+            "from": 10,
+            "fromPort": "Out",
+            "id": 9,
+            "to": 11,
+            "toPort": "A"
+        },
+        {
+            "from": 8,
+            "fromPort": "RGB",
+            "id": 10,
+            "to": 11,
+            "toPort": "B"
+        },
+        {
+            "from": 9,
+            "fromPort": "Out",
+            "id": 11,
+            "to": 12,
+            "toPort": "Color"
+        },
+        {
+            "from": 11,
+            "fromPort": "Out",
+            "id": 12,
+            "to": 12,
+            "toPort": "Emission"
+        }
+    ],
+    "format": "kesGraph",
+    "nodes": [
+        {
+            "defaults": {
+            },
+            "id": 1,
+            "params": {
+            },
+            "type": "uv",
+            "x": -1060,
+            "y": -140
+        },
+        {
+            "defaults": {
+            },
+            "id": 2,
+            "params": {
+            },
+            "type": "time",
+            "x": -1060,
+            "y": 40
+        },
+        {
+            "defaults": {
+                "B": [
+                    0.08
+                ]
+            },
+            "id": 3,
+            "params": {
+            },
+            "type": "multiply",
+            "x": -840,
+            "y": 60
+        },
+        {
+            "defaults": {
+            },
+            "id": 4,
+            "params": {
+            },
+            "type": "combine",
+            "x": -620,
+            "y": 40
+        },
+        {
+            "defaults": {
+                "Tiling": [
+                    6,
+                    6
+                ]
+            },
+            "id": 5,
+            "params": {
+            },
+            "type": "tilingOffset",
+            "x": -400,
+            "y": -120
+        },
+        {
+            "defaults": {
+                "Octaves": [
+                    5
+                ],
+                "Scale": [
+                    1
+                ]
+            },
+            "id": 6,
+            "params": {
+            },
+            "type": "fbm",
+            "x": -160,
+            "y": -120
+        },
+        {
+            "defaults": {
+            },
+            "id": 7,
+            "params": {
+                "Color": [
+                    0.04,
+                    0.07,
+                    0.28,
+                    1
+                ]
+            },
+            "type": "color",
+            "x": -160,
+            "y": 150
+        },
+        {
+            "defaults": {
+            },
+            "id": 8,
+            "params": {
+                "Color": [
+                    1,
+                    0.45,
+                    0.1,
+                    1
+                ]
+            },
+            "type": "color",
+            "x": -160,
+            "y": 300
+        },
+        {
+            "defaults": {
+            },
+            "id": 9,
+            "params": {
+            },
+            "type": "lerp",
+            "x": 120,
+            "y": 40
+        },
+        {
+            "defaults": {
+                "Power": [
+                    3
+                ]
+            },
+            "id": 10,
+            "params": {
+            },
+            "type": "fresnel",
+            "x": 120,
+            "y": 290
+        },
+        {
+            "defaults": {
+            },
+            "id": 11,
+            "params": {
+            },
+            "type": "multiply",
+            "x": 360,
+            "y": 260
+        },
+        {
+            "defaults": {
+            },
+            "id": 12,
+            "params": {
+            },
+            "type": "fragmentOutput",
+            "x": 620,
+            "y": 60
+        }
+    ],
+    "version": 1
+}

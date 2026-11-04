@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=KES ShaderGraph Editor
+Comment=Shader graph editor for Slang
+Exec=kesShaderGraph %f
+Icon=kesShaderGraph
+Terminal=false
+Categories=Development;Graphics;
+StartupWMClass=kesGraph
