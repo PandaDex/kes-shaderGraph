@@ -40,6 +40,8 @@ struct MaterialSettings {
 
     QJsonObject toJson() const;
     static MaterialSettings fromJson(const QJsonObject& obj);
+    // Reads an engine .mat file's text; keys it doesn't know are ignored.
+    static MaterialSettings fromMatFile(const QString& text);
 
     // shaderPath is content-relative; empty means the engine's default PBR program.
     QString toMatFile(const QString& shaderPath) const;

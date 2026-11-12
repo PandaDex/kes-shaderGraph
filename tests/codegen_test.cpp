@@ -415,6 +415,44 @@ static void testNoOutput()
     CHECK(!r.errors.isEmpty());
 }
 
+static void testMatFileRoundTrip()
+{
+    MaterialSettings m;
+    m.baseColor = {0.5, 0.25, 1.0, 0.75};
+    m.emissive = {1.0, 0.5, 0.0};
+    m.emissiveIntensity = 2.0;
+    m.metallic = 0.3;
+    m.roughness = 0.6;
+    m.normalScale = 0.5;
+    m.alphaCutoff = 0.4;
+    m.lit = false;
+    m.transparent = true;
+    m.doubleSided = true;
+    m.castShadows = false;
+    m.textures[SlotBaseColor] = "textures/brick.ktex";
+    m.textures[SlotNormal] = "textures/brick_n.ktex";
+
+    const MaterialSettings back = MaterialSettings::fromMatFile(m.toMatFile("shaders/x.shader"));
+    CHECK(back.baseColor == m.baseColor);
+    CHECK(back.emissive == m.emissive);
+    CHECK(back.emissiveIntensity == 2.0);
+    CHECK(back.metallic == m.metallic);
+    CHECK(back.roughness == m.roughness);
+    CHECK(back.normalScale == 0.5);
+    CHECK(back.alphaCutoff == m.alphaCutoff);
+    CHECK(!back.lit && back.transparent && back.doubleSided && !back.castShadows);
+    CHECK(back.textures[SlotBaseColor] == "textures/brick.ktex");
+    CHECK(back.textures[SlotNormal] == "textures/brick_n.ktex");
+    CHECK(back.textures[SlotEmissive].isEmpty());
+
+    // The engine's hand-written materials (game/content/materials) use the same layout.
+    const MaterialSettings brick = MaterialSettings::fromMatFile(
+        "Material {\n    BaseColor = \"1,1,1,1\"\n    BaseTexture = \"textures/brick.bmp\"\n    Roughness = 0.9\n    Lit = true\n}\n");
+    CHECK(brick.textures[SlotBaseColor] == "textures/brick.bmp");
+    CHECK(brick.roughness == 0.9);
+    CHECK(brick.lit);
+}
+
 int main(int argc, char** argv)
 {
     QCoreApplication app(argc, argv);
@@ -431,6 +469,7 @@ int main(int argc, char** argv)
     testMaterialExport();
     testKitchenSink(argc > 2 ? QString::fromLocal8Bit(argv[2]) : QString());
     testNoOutput();
+    testMatFileRoundTrip();
 
     if (g_failures == 0) std::cout << "All tests passed" << std::endl;
     else std::cerr << g_failures << " check(s) failed" << std::endl;

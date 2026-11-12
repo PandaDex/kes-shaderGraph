@@ -480,6 +480,7 @@ void MainWindow::newGraph()
     m_model->undoStack()->clear();
     m_model->undoStack()->setClean();
     m_currentFile.clear();
+    m_materialPath.clear();
     updateTitle();
     m_view->frameAll();
 }
@@ -491,6 +492,7 @@ void MainWindow::loadExample()
     m_model->undoStack()->clear();
     m_model->undoStack()->setClean();
     m_currentFile.clear();
+    m_materialPath.clear();
     updateTitle();
     m_view->frameAll();
 }
@@ -499,12 +501,14 @@ void MainWindow::openDialog()
 {
     if (!maybeSave()) return;
     const QString path = QFileDialog::getOpenFileName(this, "Open graph", QString(),
-                                                      "Slang node graphs (*.slangnodes *.json);;All files (*)");
+                                                      "Slang node graphs (*.slangnodes *.json);;KES materials (*.mat);;All files (*)");
     if (!path.isEmpty()) openFile(path);
 }
 
 bool MainWindow::openFile(const QString& path)
 {
+    if (QFileInfo(path).suffix().compare("mat", Qt::CaseInsensitive) == 0) return openMaterial(path);
+
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly)) {
         QMessageBox::warning(this, "Open failed", QString("Could not read %1:\n%2").arg(path, f.errorString()));
@@ -524,11 +528,44 @@ bool MainWindow::openFile(const QString& path)
     m_model->undoStack()->clear();
     m_model->undoStack()->setClean();
     m_currentFile = path;
+    m_materialPath.clear();
     if (m_contentRoot.isEmpty()) setContentRoot(findContentRoot(path));
     updateTitle();
     m_view->frameAll();
     if (!warnings.isEmpty()) QMessageBox::information(this, "Loaded with warnings", warnings.join('\n'));
     statusBar()->showMessage("Opened " + path, 3000);
+    return true;
+}
+
+// A .mat opens its graph (name.slangnodes next to it) when there is one; otherwise a new
+// graph starts from the material's values, and Export Material writes back to the same file.
+bool MainWindow::openMaterial(const QString& matPath)
+{
+    const QFileInfo info(matPath);
+    const QString graphPath = info.dir().absoluteFilePath(info.completeBaseName() + ".slangnodes");
+    if (QFileInfo::exists(graphPath)) {
+        if (!openFile(graphPath)) return false;
+        m_materialPath = info.absoluteFilePath();
+        return true;
+    }
+
+    QFile f(matPath);
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, "Open failed", QString("Could not read %1:\n%2").arg(matPath, f.errorString()));
+        return false;
+    }
+    const MaterialSettings material = MaterialSettings::fromMatFile(QString::fromUtf8(f.readAll()));
+
+    if (m_contentRoot.isEmpty()) setContentRoot(findContentRoot(matPath));
+    buildEmptyGraph(*m_model);
+    m_model->setMaterial(material);
+    m_model->undoStack()->clear();
+    m_model->undoStack()->setClean();
+    m_currentFile.clear();
+    m_materialPath = info.absoluteFilePath();
+    updateTitle();
+    m_view->frameAll();
+    statusBar()->showMessage("Opened material " + matPath + ". Save the graph next to it to keep the nodes.", 6000);
     return true;
 }
 
@@ -554,7 +591,11 @@ bool MainWindow::save()
 
 bool MainWindow::saveAs()
 {
-    QString path = QFileDialog::getSaveFileName(this, "Save graph", graphName() + ".slangnodes",
+    const QFileInfo material(m_materialPath);
+    const QString suggested = m_currentFile.isEmpty() && !m_materialPath.isEmpty()
+        ? material.dir().absoluteFilePath(material.completeBaseName() + ".slangnodes")
+        : graphName() + ".slangnodes";
+    QString path = QFileDialog::getSaveFileName(this, "Save graph", suggested,
                                                 "Slang node graphs (*.slangnodes);;JSON (*.json)");
     if (path.isEmpty()) return false;
     if (QFileInfo(path).suffix().isEmpty()) path += ".slangnodes";
@@ -585,7 +626,8 @@ void MainWindow::exportMaterial()
     regenerate();
 
     const QString folder = m_contentRoot.isEmpty() ? QString() : QDir(m_contentRoot).absoluteFilePath("materials");
-    QString path = QFileDialog::getSaveFileName(this, "Export material", QDir(folder).absoluteFilePath(graphName() + ".mat"),
+    const QString suggested = !m_materialPath.isEmpty() ? m_materialPath : QDir(folder).absoluteFilePath(graphName() + ".mat");
+    QString path = QFileDialog::getSaveFileName(this, "Export material", suggested,
                                                 "KES materials (*.mat)");
     if (path.isEmpty()) return;
     if (QFileInfo(path).suffix().isEmpty()) path += ".mat";
@@ -617,6 +659,7 @@ void MainWindow::exportMaterial()
         QMessageBox::warning(this, "Export failed", error);
         return;
     }
+    m_materialPath = QFileInfo(path).absoluteFilePath();
     statusBar()->showMessage(files.hasShader() ? "Exported " + path + ". Rebuild the game to compile its shader."
                                                : "Exported " + path,
                              6000);

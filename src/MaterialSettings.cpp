@@ -93,6 +93,46 @@ MaterialSettings MaterialSettings::fromJson(const QJsonObject& o)
     return m;
 }
 
+MaterialSettings MaterialSettings::fromMatFile(const QString& text)
+{
+    MaterialSettings m;
+    const auto numbers = [](const QString& value, double* out, int count) {
+        const QStringList parts = value.split(',');
+        for (int i = 0; i < count && i < parts.size(); ++i) {
+            bool ok = false;
+            const double v = parts[i].trimmed().toDouble(&ok);
+            if (ok) out[i] = v;
+        }
+    };
+    for (const QString& rawLine : text.split('\n')) {
+        const QString line = rawLine.trimmed();
+        const qsizetype eq = line.indexOf('=');
+        if (eq <= 0) continue;
+        const QString key = line.left(eq).trimmed();
+        QString value = line.mid(eq + 1).trimmed();
+        if (value.size() >= 2 && value.startsWith('"') && value.endsWith('"')) value = value.mid(1, value.size() - 2);
+        const bool flag = value.compare("true", Qt::CaseInsensitive) == 0 || value == "1";
+
+        if (key == "BaseColor") numbers(value, m.baseColor.data(), 4);
+        else if (key == "Emissive") numbers(value, m.emissive.data(), 3);
+        else if (key == "EmissiveIntensity") numbers(value, &m.emissiveIntensity, 1);
+        else if (key == "Metallic") numbers(value, &m.metallic, 1);
+        else if (key == "Roughness") numbers(value, &m.roughness, 1);
+        else if (key == "NormalScale") numbers(value, &m.normalScale, 1);
+        else if (key == "OcclusionStrength") numbers(value, &m.occlusionStrength, 1);
+        else if (key == "AlphaCutoff") numbers(value, &m.alphaCutoff, 1);
+        else if (key == "Lit") m.lit = flag;
+        else if (key == "Transparent") m.transparent = flag;
+        else if (key == "DoubleSided") m.doubleSided = flag;
+        else if (key == "CastShadows") m.castShadows = flag;
+        else {
+            for (int i = 0; i < MaterialSlotCount; ++i)
+                if (key == QLatin1String(kSlots[i].matKey)) m.textures[i] = value;
+        }
+    }
+    return m;
+}
+
 QString MaterialSettings::toMatFile(const QString& shaderPath) const
 {
     QStringList l;

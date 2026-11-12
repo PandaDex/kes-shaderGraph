@@ -67,6 +67,7 @@ private:
     void updateStatus();
     bool maybeSave();
     bool saveTo(const QString& path);
+    bool openMaterial(const QString& matPath);
     QString graphName() const;
     QWidget* buildPreviewPanel();
     void setContentRoot(const QString& root);
@@ -111,6 +112,8 @@ private:
     CodeGenResult m_gen;
     ShaderTarget m_target = ShaderTarget::KesEngine;
     QString m_currentFile;
+    // The .mat this graph was opened from or last exported to; Export Material defaults to it.
+    QString m_materialPath;
 
     QString m_contentRoot;
     QString m_projectPath;
