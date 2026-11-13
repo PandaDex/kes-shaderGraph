@@ -83,19 +83,6 @@ if(WIN32)
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
             $<TARGET_FILE:Qt6::OpenGL> $<TARGET_FILE:Qt6::OpenGLWidgets> $<TARGET_FILE_DIR:kesShaderGraph>
     )
-
-    find_program(WINDEPLOYQT_EXECUTABLE windeployqt6
-            HINTS "${Qt6_DIR}/../../../bin"
-    )
-
-    if(WINDEPLOYQT_EXECUTABLE)
-        add_custom_command(TARGET kesShaderGraph POST_BUILD
-                COMMAND "${WINDEPLOYQT_EXECUTABLE}" "$<TARGET_FILE:kesShaderGraph>"
-                COMMENT "Deploying Qt dependencies with windeployqt6"
-        )
-    else()
-        message(WARNING "windeployqt6 not found; Qt deployment skipped")
-    endif()
 endif()
 set_target_properties(kesShaderGraph PROPERTIES
     WIN32_EXECUTABLE ON
