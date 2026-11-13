@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 
+#include "KesStyle.h"
+
 #include "ExampleGraphs.h"
 #include "GraphModel.h"
 #include "InspectorWidget.h"
@@ -185,6 +187,7 @@ void MainWindow::buildDocks()
     libLay->setContentsMargins(6, 6, 6, 6);
     m_librarySearch = new QLineEdit;
     m_librarySearch->setPlaceholderText("Filter nodes…");
+    m_librarySearch->addAction(kes::style::icon("search"), QLineEdit::LeadingPosition);
     m_librarySearch->setClearButtonEnabled(true);
     m_library = new LibraryTree;
     m_library->setHeaderHidden(true);
@@ -193,7 +196,9 @@ void MainWindow::buildDocks()
     m_library->setIndentation(14);
     libLay->addWidget(m_librarySearch);
     libLay->addWidget(m_library);
-    libLay->addWidget(new QLabel("<small>Double-click or drag onto the canvas.</small>"));
+    auto* libHint = new QLabel("Double-click or drag onto the canvas.");
+    libHint->setObjectName("Muted");
+    libLay->addWidget(libHint);
     populateLibrary();
     connect(m_librarySearch, &QLineEdit::textChanged, this, &MainWindow::filterLibrary);
     connect(m_library, &QTreeWidget::itemDoubleClicked, this, [this](QTreeWidgetItem* it) {
@@ -324,9 +329,12 @@ void MainWindow::buildActions()
     };
 
     m_actNew = make("&New", QKeySequence::New, [this] { newGraph(); });
+    m_actNew->setIcon(kes::style::icon("new"));
     m_actOpen = make("&Open…", QKeySequence::Open, [this] { openDialog(); });
+    m_actOpen->setIcon(kes::style::icon("open"));
     m_actExample = make("Open E&xample Graph", {}, [this] { loadExample(); });
     m_actSave = make("&Save", QKeySequence::Save, [this] { save(); });
+    m_actSave->setIcon(kes::style::icon("save"));
     m_actSaveAs = make("Save &As…", QKeySequence::SaveAs, [this] { saveAs(); });
     m_actExport = make("&Export Slang…", QKeySequence("Ctrl+E"), [this] { exportSlang(); });
     m_actCopyCode = make("Copy Slang to &Clipboard", QKeySequence("Ctrl+Shift+C"), [this] { copySlang(); });
@@ -334,8 +342,10 @@ void MainWindow::buildActions()
 
     m_actUndo = m_model->undoStack()->createUndoAction(this, "Undo");
     m_actUndo->setShortcut(QKeySequence::Undo);
+    m_actUndo->setIcon(kes::style::icon("undo"));
     m_actRedo = m_model->undoStack()->createRedoAction(this, "Redo");
     m_actRedo->setShortcuts({QKeySequence::Redo, QKeySequence("Ctrl+Y")});
+    m_actRedo->setIcon(kes::style::icon("redo"));
     addAction(m_actUndo);
     addAction(m_actRedo);
 
@@ -367,6 +377,7 @@ void MainWindow::buildActions()
     auto* tb = addToolBar("Main");
     tb->setObjectName("MainToolBar");
     tb->setMovable(false);
+    tb->setIconSize(QSize(18, 18));
     tb->addAction(m_actNew);
     tb->addAction(m_actOpen);
     tb->addAction(m_actSave);
@@ -445,7 +456,7 @@ QString MainWindow::graphName() const
 
 void MainWindow::updateTitle()
 {
-    setWindowTitle(QString("%1[*] — ShaderGraph Editor").arg(graphName()));
+    setWindowTitle(kes::style::windowTitle(graphName(), "Shader Graph"));
     setWindowModified(!m_model->undoStack()->isClean());
 }
 
@@ -771,8 +782,7 @@ void MainWindow::refreshProblems()
 {
     m_problems->clear();
     auto add = [&](bool error, const QString& text) {
-        auto* it = new QListWidgetItem((error ? "✖ " : "⚠ ") + text);
-        it->setForeground(error ? QColor("#ff7b72") : QColor("#e3b341"));
+        auto* it = new QListWidgetItem(kes::style::icon(error ? "error" : "warning"), text);
         m_problems->addItem(it);
     };
     for (const QString& e : m_gen.errors) add(true, e);

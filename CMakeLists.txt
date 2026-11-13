@@ -36,6 +36,8 @@ target_link_libraries(sne_core PUBLIC Qt6::Core Qt6::Gui)
 
 qt_add_executable(kesShaderGraph
     src/main.cpp
+    src/KesStyle.h
+    src/KesStyle.cpp
     src/MainWindow.h
     src/MainWindow.cpp
     src/GraphItems.h

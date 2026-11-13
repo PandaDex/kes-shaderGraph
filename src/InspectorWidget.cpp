@@ -30,7 +30,7 @@ QLabel* heading(const QString& text)
     QFont f = l->font();
     f.setBold(true);
     l->setFont(f);
-    l->setStyleSheet("color:#c8c8d2; margin-top:8px;");
+    l->setObjectName("Heading");
     return l;
 }
 
@@ -38,7 +38,7 @@ QLabel* note(const QString& text)
 {
     auto* l = new QLabel(text);
     l->setWordWrap(true);
-    l->setStyleSheet("color:#8a8a96;");
+    l->setObjectName("Muted");
     return l;
 }
 

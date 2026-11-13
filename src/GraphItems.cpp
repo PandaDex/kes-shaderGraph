@@ -1,4 +1,5 @@
 #include "GraphItems.h"
+#include "KesStyle.h"
 
 #include "GraphModel.h"
 #include "NodeGraphScene.h"
@@ -281,7 +282,7 @@ void NodeItem::paint(QPainter* p, const QStyleOptionGraphicsItem* opt, QWidget*)
     const qreal lod = QStyleOptionGraphicsItem::levelOfDetailFromTransform(p->worldTransform());
     const QRectF body(0, 0, m_width, m_height);
     const bool selected = opt->state & QStyle::State_Selected;
-    const QColor border = selected ? QColor("#ffb43c") : QColor("#1b1b1f");
+    const QColor border = selected ? kes::style::accent() : QColor("#161618");
     const qreal bw = selected ? 2.4 : 1.2;
 
     if (lod < kLodSimple) {
