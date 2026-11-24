@@ -16,6 +16,8 @@ int main(int argc, char** argv)
     QSurfaceFormat::setDefaultFormat(format);
     QApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
 
+    // Qt's native Windows file dialogs keep the main thread blocked for seconds after closing.
+    QApplication::setAttribute(Qt::AA_DontUseNativeDialogs);
     QApplication app(argc, argv);
     QApplication::setApplicationName("kesGraph");
     QApplication::setOrganizationName("kesGraph");
