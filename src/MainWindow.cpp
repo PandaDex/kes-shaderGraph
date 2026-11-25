@@ -21,6 +21,7 @@
 #include <QCloseEvent>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDataStream>
 #include <QDir>
 #include <QDockWidget>
 #include <QFile>
@@ -80,6 +81,34 @@ QPlainTextEdit* makeCodeView(bool readOnly)
     e->setFont(f);
     e->setTabStopDistance(QFontMetricsF(f).horizontalAdvance(' ') * 4);
     return e;
+}
+
+// same layout as engine/texture_file.cpp; only the top mip is read
+QImage loadKTex(const QString& path)
+{
+    QFile file(path);
+    if (!file.open(QIODevice::ReadOnly)) return {};
+    QDataStream in(&file);
+    in.setByteOrder(QDataStream::LittleEndian);
+    quint32 magic = 0, version = 0, sourceLength = 0;
+    in >> magic >> version >> sourceLength;
+    if (magic != 0x5845544Bu || version != 1u) return {};
+    if (in.skipRawData(int(sourceLength)) != int(sourceLength)) return {};
+    quint32 width = 0, height = 0, format = 0, flags = 0, mips = 0, size = 0;
+    in >> width >> height >> format >> flags >> mips >> size;
+    if (in.status() != QDataStream::Ok || format != 1 || width == 0 || height == 0 || width > 16384 ||
+        height > 16384 || quint64(size) < quint64(width) * height * 4)
+        return {};
+    QImage image(int(width), int(height), QImage::Format_RGBA8888);
+    for (quint32 y = 0; y < height; ++y)
+        if (in.readRawData(reinterpret_cast<char*>(image.scanLine(int(y))), int(width * 4)) != int(width * 4)) return {};
+    return image;
+}
+
+QImage loadTextureImage(const QString& path)
+{
+    if (QFileInfo(path).suffix().compare("ktex", Qt::CaseInsensitive) == 0) return loadKTex(path);
+    return QImage(path);
 }
 
 } // namespace
@@ -733,7 +762,7 @@ void MainWindow::syncMaterial()
         m_loadedTextures[i] = relative;
 
         QImage image;
-        if (!relative.isEmpty()) image.load(QDir(m_contentRoot).absoluteFilePath(relative));
+        if (!relative.isEmpty()) image = loadTextureImage(QDir(m_contentRoot).absoluteFilePath(relative));
         m_textureProblems[i] = !relative.isEmpty() && image.isNull()
                                    ? QString("Preview can't load texture %1.").arg(relative)
                                    : QString();
